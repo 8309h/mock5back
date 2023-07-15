@@ -2,6 +2,8 @@ const express = require("express")
 const jwt = require("jsonwebtoken")
 const bcrypt = require("bcrypt")
 const { UserModel } = require("../model/user.model")
+const BlacklistedTokenModel  =  require("../model/blacklist.model")
+
 require('dotenv').config()
 
 
@@ -73,29 +75,45 @@ UserRouter.post("/login", async (req, res) => {
     }
 })
 
+
 UserRouter.post("/logout", async (req, res) => {
-    try {
-
-        const token = req.headers.authorization;
-        if (!token) {
-            return res.status(401).json({ message: "No token provided" });
-        }
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-        const user = await UserModel.findById(decoded.userId);
-
-        if (!user) {
-            return res.status(404).json({ message: "User not found in database" });
-        }
-
-        // Perform any additional logout operations, if needed
-        res.status(200).json({ message: "Logout successful" });
-    } catch (err) {
-        console.error("Error logging out:", err);
-        res.status(500).json({ error: "Internal server error" });
+  try {
+    
+    const token = req.headers.authorization;
+    if (!token) {
+      return res.status(401).json({ message: "No token provided" });
     }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const user = await UserModel.findById(decoded.userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found in database" });
+    }
+
+    
+    const isBlacklisted = await BlacklistedTokenModel.exists({ token: token });
+
+    if (isBlacklisted) {
+      return res.status(401).json({ message: "Token has already been invalidated" });
+    }
+
+    
+    const blacklistedToken = new BlacklistedTokenModel({ token: token });
+    await blacklistedToken.save();
+
+    res.status(200).json({ message: "Logout successful" });
+  } catch (err) {
+    console.error("Error logging out:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
+
+
+
+
+
 
 module.exports = UserRouter
 
